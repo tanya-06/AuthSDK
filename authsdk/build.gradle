@@ -1,30 +1,19 @@
 plugins {
-    id 'com.android.application'
+    id 'com.android.library'
     id 'kotlin-android'
 }
 
 android {
-    compileSdkVersion 30
-    buildToolsVersion "30.0.3"
+    compileSdkVersion projectCompileSdkVersion
+    buildToolsVersion projectBuildToolsVersion
 
     defaultConfig {
-        applicationId "com.example.dehaatauthsdk"
-        minSdkVersion 16
-        targetSdkVersion 30
-        versionCode 1
-        versionName "1.0"
-
-        // Make sure this is consistent with the redirect URI used in res/raw/auth_config.json,
-        // or specify additional redirect URIs in AndroidManifest.xml
-        manifestPlaceholders = [
-                'appAuthRedirectScheme': 'net.openid.appauthdemo'
-        ]
-
+        minSdkVersion projectMinSdkVersion
+        targetSdkVersion projectTargetSdkVersion
+        versionCode authSdkVersionCode
+        versionName authSdkVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-    }
-
-    dataBinding {
-        enabled true
+        consumerProguardFiles "consumer-rules.pro"
     }
 
     buildTypes {
@@ -39,6 +28,11 @@ android {
     }
     kotlinOptions {
         jvmTarget = '1.8'
+    }
+
+    repositories {
+        mavenCentral()
+        maven { url 'https://maven.google.com' }
     }
 }
 

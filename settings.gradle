@@ -1,2 +1,1 @@
-rootProject.name = "DehaatAuthSdk"
-include ':app'
+include ':authsdk'
