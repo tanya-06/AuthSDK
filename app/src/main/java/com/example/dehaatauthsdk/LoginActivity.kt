@@ -5,130 +5,122 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
-import android.text.TextUtils
-import android.util.Log
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
-import androidx.annotation.MainThread
-import androidx.annotation.WorkerThread
 import androidx.appcompat.app.AppCompatActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.Dispatchers.Main
+import kotlinx.coroutines.launch
 import net.openid.appauth.*
 import net.openid.appauth.AuthorizationException.AuthorizationRequestErrors
 import net.openid.appauth.AuthorizationService.TokenResponseCallback
-import net.openid.appauth.internal.Logger
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
 
 class LoginActivity : AppCompatActivity() {
 
-    private lateinit var configuration: Configuration
-
-    private lateinit var webView: WebView
-
+    private lateinit var initialConfiguration: Configuration
     private lateinit var mAuthService: AuthorizationService
-    private lateinit var mAuthServiceConfiguration :AuthorizationServiceConfiguration
-
-    private lateinit var mAuthRequest :AuthorizationRequest
-
-    private lateinit var mExecutor: ExecutorService
+    private lateinit var mAuthServiceConfiguration: AuthorizationServiceConfiguration
+    private lateinit var mAuthRequest: AuthorizationRequest
+    private lateinit var webView: WebView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        webView= WebView(this)
-        configuration=Configuration.getInstance(applicationContext)
-        
-        mExecutor = Executors.newSingleThreadExecutor()
-        mExecutor.submit(this::recreateAuthorizationService)
+        initialize()
     }
 
-
-    @WorkerThread
-    private fun recreateAuthorizationService() {
-        if (::mAuthService.isInitialized) {
-            Log.i("AuthSDK", "Discarding existing AuthService instance")
-            mAuthService.dispose()
+    private fun initialize() {
+        webView = WebView(this).apply {
+            webViewClient = MyWebViewClient()
+            enableWebViewSettings()
         }
-        mAuthService = createAuthorizationService()
+        initialConfiguration = Configuration.getInstance(applicationContext)
 
+        CoroutineScope((IO)).launch {
+            startAuthorizationServiceCreation()
+        }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun WebView.enableWebViewSettings() {
+        settings.apply {
+            javaScriptEnabled = true
+            useWideViewPort = true
+            loadWithOverviewMode = true
+        }
+    }
+
+    private fun startAuthorizationServiceCreation() {
+        disposeCurrentServiceIfExist()
+        mAuthService = createNewAuthorizationService()
+
+        initialConfiguration.discoveryUri?.let {
+            fetchEndpointsFromDiscoveryUrl(it)
+        }
+    }
+
+    private fun disposeCurrentServiceIfExist() {
+        if (::mAuthService.isInitialized)
+            mAuthService.dispose()
+    }
+
+    private fun fetchEndpointsFromDiscoveryUrl(discoveryUrl: Uri) {
         AuthorizationServiceConfiguration.fetchFromUrl(
-            configuration.discoveryUri!!,
+            discoveryUrl,
             handleConfigurationRetrievalResult,
-            configuration.connectionBuilder
+            initialConfiguration.connectionBuilder
         )
     }
 
-    private fun createAuthorizationService(): AuthorizationService {
-        Log.i("AuthSDK", "Creating authorization service")
-        val builder = AppAuthConfiguration.Builder()
-        builder.setConnectionBuilder(configuration.connectionBuilder)
-        return AuthorizationService(this, builder.build())
-    }
+    private fun createNewAuthorizationService() =
+        AuthorizationService(
+            this,
+            AppAuthConfiguration.Builder()
+                .setConnectionBuilder(initialConfiguration.connectionBuilder)
+                .build()
+        )
 
-    private var handleConfigurationRetrievalResult = object : AuthorizationServiceConfiguration.RetrieveConfigurationCallback{
-        override fun onFetchConfigurationCompleted(
-            config: AuthorizationServiceConfiguration?,
-            ex: AuthorizationException?
-        ) {
+    private var handleConfigurationRetrievalResult =
+        AuthorizationServiceConfiguration.RetrieveConfigurationCallback { config, exception ->
             if (config == null) {
-                Log.i("AuthSDK", "Failed to retrieve discovery document", ex)
-                return
+                Toast.makeText(this, exception.toString(), Toast.LENGTH_SHORT).show()
+                return@RetrieveConfigurationCallback
             }
-            mAuthServiceConfiguration=config
-
-
-            //once authService configuration is recieved from discovery uri
-            //its time to create Auth Request
-            createAuthRequest("This is Hint")
-
+            mAuthServiceConfiguration = config
+            createAuthRequest()
         }
+
+    private fun createAuthRequest() {
+        mAuthRequest =
+            AuthorizationRequest.Builder(
+                mAuthServiceConfiguration,
+                initialConfiguration.clientId!!,
+                ResponseTypeValues.CODE,
+                initialConfiguration.redirectUri
+            ).setScope(initialConfiguration.scope).setLoginHint("Please enter email").build()
+
+        loadAuthorizationEndpointInWebView(mAuthRequest.toUri().toString())
+
     }
 
-    private fun createAuthRequest(loginHint: String?) {
-        Log.i("AuthSDK", "Creating auth request for login hint: $loginHint")
-        val authRequestBuilder = AuthorizationRequest.Builder(
-           mAuthServiceConfiguration,
-            configuration.clientId!!,
-            ResponseTypeValues.CODE,
-            configuration.redirectUri
-        ).setScope(configuration.scope)
-        if (!TextUtils.isEmpty(loginHint)) {
-            authRequestBuilder.setLoginHint(loginHint)
-        }
-        mAuthRequest = authRequestBuilder.build()
-
-
-        webView.apply {
-            webViewClient=MyWebViewClient()
-            enableWebViewSettings()
-            loadUrl(mAuthRequest.toUri().toString())
+    private fun loadAuthorizationEndpointInWebView(authUrl: String) {
+        CoroutineScope(Main).launch {
+            webView.loadUrl(authUrl)
         }
     }
-
 
     inner class MyWebViewClient : WebViewClient() {
-
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+            url?.let {
+                if (checkIfUrlIsAuthorizationUrl(it))
+                    inputUserCredentialsAndClickSignIn(
+                        CommunicationUtils.getUserName(),
+                        CommunicationUtils.getPassword()
+                    )
 
-            if(url!!.contains(mAuthRequest.toUri().toString())) {
-                //write java script code
-
-                webView.loadUrl(
-                    "javascript: {" +
-                            "document.getElementById('username').value = '" + "harsh.vardhan@agrevolution.in" + "';" +
-                            "document.getElementById('password').value = '" + "admin" + "';" +
-                            "document.getElementById('kc-login').click();" +
-                            "};"
-                );
-            }
-            if(url.contains(configuration.redirectUri.toString())){
-                //communicate back to native
-                // what information need to be communicate
-
-                val intent = extractResponseData(Uri.parse(url))
-                val response = AuthorizationResponse.fromIntent(intent!!);
-                performTokenRequest(response!!.createTokenExchangeRequest(),handleAccessTokenResponse)
-                val a =2
+                if (checkIfUrlIsRedirectUrl(it))
+                    handleRedirectUrl(it)
             }
             super.onPageStarted(view, url, favicon)
         }
@@ -138,35 +130,54 @@ class LoginActivity : AppCompatActivity() {
         }
     }
 
-    private fun extractResponseData(responseUri: Uri): Intent? {
-        return if (responseUri.queryParameterNames.contains(AuthorizationException.PARAM_ERROR)) {
-            AuthorizationException.fromOAuthRedirect(responseUri).toIntent()
-        } else {
+    private fun checkIfUrlIsAuthorizationUrl(url: String) =
+        url.contains(mAuthRequest.toUri().toString())
+
+    private fun checkIfUrlIsRedirectUrl(url: String) =
+        url.contains(initialConfiguration.redirectUri.toString())
+
+    private fun inputUserCredentialsAndClickSignIn(userName: String, password: String) =
+        webView.loadUrl(
+            "javascript: {" +
+                    "document.getElementById('username').value = '" + userName + "';" +
+                    "document.getElementById('password').value = '" + password + "';" +
+                    "document.getElementById('kc-login').click();" +
+                    "};"
+        )
+
+    private fun handleRedirectUrl(url: String) {
+        val intent = extractResponseDataFromRedirectUrl(url)
+        val response = AuthorizationResponse.fromIntent(intent)
+        response?.let {
+            performTokenRequest(response.createTokenExchangeRequest(), handleTokenResponseCallback)
+        }
+
+    }
+
+    private fun extractResponseDataFromRedirectUrl(url: String): Intent {
+        val redirectUrl = Uri.parse(url)
+        if (redirectUrl.queryParameterNames.contains(AuthorizationException.PARAM_ERROR))
+            return AuthorizationException.fromOAuthRedirect(redirectUrl).toIntent()
+        else {
             val response = AuthorizationResponse.Builder(mAuthRequest)
-                .fromUri(responseUri)
-                .build();
+                .fromUri(redirectUrl)
+                .build()
+
             if (mAuthRequest.getState() == null && response.state != null
                 || mAuthRequest.getState() != null && mAuthRequest.getState() != response.state
-            ) {
-                Logger.warn(
-                    "State returned in authorization response (%s) does not match state "
-                            + "from request (%s) - discarding response",
-                    response.state,
-                    mAuthRequest.getState()
-                )
+            )
                 return AuthorizationRequestErrors.STATE_MISMATCH.toIntent()
-            }
-            response.toIntent()
+
+            return response.toIntent()
         }
     }
 
-
-    @MainThread
     private fun performTokenRequest(
         request: TokenRequest,
         callback: TokenResponseCallback
     ) {
-        val clientAuthentication= ClientSecretBasic(configuration.tokenEndpointUri.toString())
+        val clientAuthentication =
+            ClientSecretBasic(initialConfiguration.tokenEndpointUri.toString())
 
         mAuthService.performTokenRequest(
             request,
@@ -175,22 +186,20 @@ class LoginActivity : AppCompatActivity() {
         )
     }
 
-    private var  handleAccessTokenResponse = object :TokenResponseCallback {
-        override fun onTokenRequestCompleted(
-            response: TokenResponse?,
-            ex: AuthorizationException?
-        ) {
-            Toast.makeText(applicationContext,"All Tokens received",Toast.LENGTH_SHORT).show()
-            val a =6
-            val c=9
+    private var handleTokenResponseCallback =
+        TokenResponseCallback { response, exception ->
+            response?.let {
+                val tokenInfo = TokenInfo(
+                    it.accessToken!!,
+                    it.refreshToken!!,
+                    it.idToken!!
+                )
+                CommunicationUtils.getLoginCallback().onSuccess(tokenInfo)
+            } ?: kotlin.run {
+                CommunicationUtils.getLoginCallback().onFailure(exception)
+            }
+
+            Toast.makeText(applicationContext, "All Tokens received", Toast.LENGTH_SHORT).show()
         }
-    }
 
-
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun WebView.enableWebViewSettings() {
-        settings.javaScriptEnabled = true
-        settings.useWideViewPort = true
-        settings.loadWithOverviewMode = true
-    }
 }
