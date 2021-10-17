@@ -136,7 +136,7 @@ class LoginActivity : Activity() {
                             AuthSDK.getPassword()
                         )
 
-                    if (!::mLogoutRequest.isInitialized)
+                    if (::mLogoutRequest.isInitialized)
                         handleLogoutRedirectUrl(it)
                     else
                         handleLoginRedirectUrl(it)
