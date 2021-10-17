@@ -9,7 +9,6 @@ import android.os.Bundle
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.Dispatchers.Main
@@ -24,6 +23,7 @@ class LoginActivity : Activity() {
     private lateinit var mAuthService: AuthorizationService
     private lateinit var mAuthServiceConfiguration: AuthorizationServiceConfiguration
     private lateinit var mAuthRequest: AuthorizationRequest
+    private lateinit var mLogoutRequest: EndSessionRequest
     private lateinit var webView: WebView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,7 +37,6 @@ class LoginActivity : Activity() {
             enableWebViewSettings()
         }
         initialConfiguration = Configuration.getInstance(applicationContext)
-
         CoroutineScope((IO)).launch {
             startAuthorizationServiceCreation()
         }
@@ -62,8 +61,9 @@ class LoginActivity : Activity() {
     }
 
     private fun disposeCurrentServiceIfExist() {
-        if (::mAuthService.isInitialized)
+        if (::mAuthService.isInitialized) {
             mAuthService.dispose()
+        }
     }
 
     private fun fetchEndpointsFromDiscoveryUrl(discoveryUrl: Uri) {
@@ -76,7 +76,7 @@ class LoginActivity : Activity() {
 
     private fun createNewAuthorizationService() =
         AuthorizationService(
-            this,
+            applicationContext,
             AppAuthConfiguration.Builder()
                 .setConnectionBuilder(initialConfiguration.connectionBuilder)
                 .build()
@@ -101,8 +101,23 @@ class LoginActivity : Activity() {
                 initialConfiguration.redirectUri
             ).setScope(initialConfiguration.scope).setLoginHint("Please enter email").build()
 
-        loadAuthorizationEndpointInWebView(mAuthRequest.toUri().toString())
+        chooseOperationAndProcess()
 
+    }
+
+    private fun chooseOperationAndProcess() {
+
+        when (AuthSDK.getOperationState()) {
+
+            AuthSDK.OperationState.LOGIN ->
+                loadAuthorizationEndpointInWebView(mAuthRequest.toUri().toString())
+
+            AuthSDK.OperationState.RENEW_TOKEN ->
+                startRenewAuthToken(AuthSDK.getRefreshToken())
+
+            AuthSDK.OperationState.LOGOUT ->
+                startLogout(AuthSDK.getIdToken())
+        }
     }
 
     private fun loadAuthorizationEndpointInWebView(authUrl: String) {
@@ -113,29 +128,28 @@ class LoginActivity : Activity() {
 
     inner class MyWebViewClient : WebViewClient() {
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-            url?.let {
-                if (checkIfUrlIsAuthorizationUrl(it))
-                    inputUserCredentialsAndClickSignIn(
-                        CommunicationUtils.getUserName(),
-                        CommunicationUtils.getPassword()
-                    )
+            synchronized(this) {
+                url?.let {
+                    if (checkIfUrlIsAuthorizationUrl(it))
+                        inputUserCredentialsAndClickSignIn(
+                            AuthSDK.getUserName(),
+                            AuthSDK.getPassword()
+                        )
 
-                if (checkIfUrlIsRedirectUrl(it))
-                    handleRedirectUrl(it)
+                    if (!::mLogoutRequest.isInitialized)
+                        handleLogoutRedirectUrl(it)
+                    else
+                        handleLoginRedirectUrl(it)
+
+                }
+                super.onPageStarted(view, url, favicon)
             }
-            super.onPageStarted(view, url, favicon)
-        }
 
-        override fun onPageFinished(view: WebView?, url: String?) {
-            super.onPageFinished(view, url)
         }
     }
 
     private fun checkIfUrlIsAuthorizationUrl(url: String) =
         url.contains(mAuthRequest.toUri().toString())
-
-    private fun checkIfUrlIsRedirectUrl(url: String) =
-        url.contains(initialConfiguration.redirectUri.toString())
 
     private fun inputUserCredentialsAndClickSignIn(userName: String, password: String) =
         webView.loadUrl(
@@ -146,13 +160,34 @@ class LoginActivity : Activity() {
                     "};"
         )
 
-    private fun handleRedirectUrl(url: String) {
+
+    private fun handleLoginRedirectUrl(url: String) {
         val intent = extractResponseDataFromRedirectUrl(url)
         val response = AuthorizationResponse.fromIntent(intent)
         response?.let {
-            performTokenRequest(response.createTokenExchangeRequest(), handleTokenResponseCallback)
+            performTokenRequest(
+                response.createTokenExchangeRequest(),
+                handleTokenResponseCallback
+            )
+        }
+    }
+
+
+    private fun handleLogoutRedirectUrl(url: String) {
+        val intent = EndSessionResponse.Builder(mLogoutRequest).setState(
+            Uri.parse(url).getQueryParameter(
+                "state"
+            )
+        ).build().toIntent()
+        val response = EndSessionResponse.fromIntent(intent)
+
+        response?.let {
+            AuthSDK.getLogoutCallback().onLogoutSuccess()
+        } ?: kotlin.run {
+            AuthSDK.getLogoutCallback().onLogoutFailure()
         }
 
+        finish()
     }
 
     private fun extractResponseDataFromRedirectUrl(url: String): Intent {
@@ -172,6 +207,22 @@ class LoginActivity : Activity() {
             return response.toIntent()
         }
     }
+
+
+    private fun startRenewAuthToken(refreshToken: String) {
+        val tokenRequest = TokenRequest.Builder(
+            mAuthRequest.configuration,
+            initialConfiguration.clientId!!
+        )
+            .setGrantType(GrantTypeValues.REFRESH_TOKEN)
+            .setScope(null)
+            .setRefreshToken(refreshToken)
+            .setAdditionalParameters(null)
+            .build()
+
+        performTokenRequest(tokenRequest, handleTokenResponseCallback)
+    }
+
 
     private fun performTokenRequest(
         request: TokenRequest,
@@ -195,11 +246,32 @@ class LoginActivity : Activity() {
                     it.refreshToken!!,
                     it.idToken!!
                 )
-                CommunicationUtils.getLoginCallback().onSuccess(tokenInfo)
+                AuthSDK.getLoginCallback().onSuccess(tokenInfo)
             } ?: kotlin.run {
-                CommunicationUtils.getLoginCallback().onFailure(exception)
+                AuthSDK.getLoginCallback().onFailure(exception)
             }
             finish()
         }
+
+
+    private fun startLogout(idToken: String) {
+        mLogoutRequest =
+            EndSessionRequest.Builder(mAuthServiceConfiguration)
+                .setIdTokenHint(idToken)
+                .setPostLogoutRedirectUri(initialConfiguration.endSessionRedirectUri)
+                .build()
+        CoroutineScope(Main).launch {
+            webView = WebView(this@LoginActivity).apply {
+                webViewClient = MyWebViewClient()
+                enableWebViewSettings()
+            }
+            webView.loadUrl(mLogoutRequest.toUri().toString())
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        mAuthService.dispose();
+    }
 
 }

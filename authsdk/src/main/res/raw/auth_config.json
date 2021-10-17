@@ -1,12 +1,13 @@
 {
   "client_id": "farmerapp",
   "redirect_uri": "https://appauth.demo-app.io/oauth2redirect",
-  "end_session_redirect_uri": "https://oidc.dehat.co/auth/realms/master/protocol/openid-connect/auth",
+  "end_session_redirect_uri": "https://appauth.demo-app.io/oauth2redirect",
   "authorization_scope": "openid email",
   "discovery_uri": "https://oidc.dehat.co/auth/realms/master/.well-known/openid-configuration",
-  "authorization_endpoint_uri": "",
-  "token_endpoint_uri": "",
-  "registration_endpoint_uri": "",
-  "user_info_endpoint_uri": "",
+  "authorization_endpoint": "https://oidc.dehat.co/auth/realms/dehaat/protocol/openid-connect/auth",
+  "token_endpoint": "https://oidc.dehat.co/auth/realms/dehaat/protocol/openid-connect/token",
+  "introspection_endpoint": "https://oidc.dehat.co/auth/realms/dehaat/protocol/openid-connect/token/introspect",
+  "userinfo_endpoint": "https://oidc.dehat.co/auth/realms/dehaat/protocol/openid-connect/userinfo",
+  "end_session_endpoint": "https://oidc.dehat.co/auth/realms/dehaat/protocol/openid-connect/logout",
   "https_required": true
 }

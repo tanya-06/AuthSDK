@@ -101,13 +101,11 @@ public final class ConnectionBuilderForTesting implements ConnectionBuilder {
         conn.setReadTimeout(READ_TIMEOUT_MS);
         conn.setInstanceFollowRedirects(false);
 
-        if(!BuildConfig.DEBUG) {
             if (conn instanceof HttpsURLConnection && TRUSTING_CONTEXT != null) {
                 HttpsURLConnection httpsConn = (HttpsURLConnection) conn;
                 httpsConn.setSSLSocketFactory(TRUSTING_CONTEXT.getSocketFactory());
                 httpsConn.setHostnameVerifier(ANY_HOSTNAME_VERIFIER);
             }
-        }
 
         return conn;
     }
