@@ -5,7 +5,7 @@ subprojects{
         projectMinSdkVersion = 21
         projectTargetSdkVersion = 30
 
-        authSdkVersionCode = 4
-        authSdkVersionName = '4'
+        authSdkVersionCode = 5
+        authSdkVersionName = '5'
     }
 }

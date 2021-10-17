@@ -130,23 +130,29 @@ class LoginActivity : Activity() {
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
             synchronized(this) {
                 url?.let {
-                    if (checkIfUrlIsAuthorizationUrl(it))
-                        inputUserCredentialsAndClickSignIn(
-                            AuthSDK.getUserName(),
-                            AuthSDK.getPassword()
-                        )
-
-                    if (::mLogoutRequest.isInitialized)
-                        handleLogoutRedirectUrl(it)
-                    else
-                        handleLoginRedirectUrl(it)
-
+                    if(checkIfUrlIsRedirectUrl(it)){
+                        if (::mLogoutRequest.isInitialized)
+                            handleLogoutRedirectUrl(it)
+                        else
+                            handleLoginRedirectUrl(it)
+                    }
+                    else {
+                        if (checkIfUrlIsAuthorizationUrl(it)) {
+                            inputUserCredentialsAndClickSignIn(
+                                AuthSDK.getUserName(),
+                                AuthSDK.getPassword()
+                            )
+                        }
+                    }
                 }
                 super.onPageStarted(view, url, favicon)
             }
 
         }
     }
+
+    private fun checkIfUrlIsRedirectUrl(url: String) =
+        url.contains(initialConfiguration.redirectUri.toString())
 
     private fun checkIfUrlIsAuthorizationUrl(url: String) =
         url.contains(mAuthRequest.toUri().toString())
