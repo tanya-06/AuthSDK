@@ -109,7 +109,7 @@ class LoginActivity : Activity() {
 
         when (AuthSDK.getOperationState()) {
 
-            AuthSDK.OperationState.LOGIN ->
+            AuthSDK.OperationState.EMAIL_LOGIN ->
                 loadAuthorizationEndpointInWebView(mAuthRequest.toUri().toString())
 
             AuthSDK.OperationState.RENEW_TOKEN ->
@@ -117,6 +117,10 @@ class LoginActivity : Activity() {
 
             AuthSDK.OperationState.LOGOUT ->
                 startLogout(AuthSDK.getIdToken())
+
+            else ->{
+
+            }
         }
     }
 
@@ -130,13 +134,12 @@ class LoginActivity : Activity() {
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
             synchronized(this) {
                 url?.let {
-                    if(checkIfUrlIsRedirectUrl(it)){
+                    if (checkIfUrlIsRedirectUrl(it)) {
                         if (::mLogoutRequest.isInitialized)
                             handleLogoutRedirectUrl(it)
                         else
                             handleLoginRedirectUrl(it)
-                    }
-                    else {
+                    } else {
                         if (checkIfUrlIsAuthorizationUrl(it)) {
                             inputUserCredentialsAndClickSignIn(
                                 AuthSDK.getUserName(),
@@ -247,12 +250,18 @@ class LoginActivity : Activity() {
     private var handleTokenResponseCallback =
         TokenResponseCallback { response, exception ->
             response?.let {
-                val tokenInfo = TokenInfo(
-                    it.accessToken!!,
-                    it.refreshToken!!,
-                    it.idToken!!
-                )
-                AuthSDK.getLoginCallback().onSuccess(tokenInfo)
+                with(it) {
+                    if (accessToken != null && refreshToken != null && idToken != null) {
+                        val tokenInfo = TokenInfo(
+                            it.accessToken!!,
+                            it.refreshToken!!,
+                            it.idToken!!
+                        )
+                        AuthSDK.getLoginCallback().onSuccess(tokenInfo)
+                    } else
+                        AuthSDK.getLoginCallback()
+                            .onFailure(KotlinNullPointerException("access token is null"))
+                }
             } ?: kotlin.run {
                 AuthSDK.getLoginCallback().onFailure(exception)
             }
@@ -277,7 +286,7 @@ class LoginActivity : Activity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        mAuthService.dispose();
+        mAuthService.dispose()
     }
 
 }

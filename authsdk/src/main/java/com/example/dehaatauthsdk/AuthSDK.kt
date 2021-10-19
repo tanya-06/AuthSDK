@@ -6,18 +6,19 @@ import android.content.Intent
 object AuthSDK {
 
     private var userName = "harsh.vardhan@agrevolution.in"
-    private var password ="admin"
-    private lateinit var refreshToken :String
-    private lateinit var idToken :String
-    private var operationState =OperationState.LOGIN
+    private var password = "admin"
+    private lateinit var refreshToken: String
+    private lateinit var idToken: String
+    private lateinit var operationState: OperationState
+    private lateinit var clientId: String
 
-    enum class OperationState{
-        LOGIN, RENEW_TOKEN, LOGOUT
+    enum class OperationState {
+        MOBILE_LOGIN, EMAIL_LOGIN, RENEW_TOKEN, LOGOUT
     }
 
-    private lateinit var loginResponseCallback :LoginResponseCallback
+    private lateinit var loginResponseCallback: LoginResponseCallback
 
-    private lateinit var logoutResponseCallback :LogoutCallback
+    private lateinit var logoutResponseCallback: LogoutCallback
 
     fun getUserName() = userName
 
@@ -33,6 +34,20 @@ object AuthSDK {
 
     fun getIdToken() = idToken
 
+    fun getClientId() = clientId
+
+    fun setUserName(userName: String){
+        this.userName = userName
+    }
+
+    fun setPassword(password: String){
+        this.password = password
+    }
+
+    fun setClientId(clientId: String){
+        this.clientId = clientId
+    }
+
     fun setLoginResponseCallback(callback: LoginResponseCallback) {
         loginResponseCallback = callback
     }
@@ -41,21 +56,24 @@ object AuthSDK {
         logoutResponseCallback = callback
     }
 
-    fun doLogin(context: Context, userName: String, password: String) {
-        this.operationState= OperationState.LOGIN
-        this.userName = userName
-        this.password = password
+    fun loginWithMobile(context: Context, mobile: String, otp: String) {
+        this.operationState = OperationState.MOBILE_LOGIN
+        this.userName = mobile
+        this.password = otp
         context.startActivity(Intent(context, LoginActivity::class.java))
     }
 
-    fun renewToken(context: Context,refreshToken :String){
+    fun loginWithEmail(context: Context, userName: String, password: String) {
+
+    }
+
+    fun renewToken(context: Context, refreshToken: String) {
         this.refreshToken = refreshToken
         this.operationState = OperationState.RENEW_TOKEN
         context.startActivity(Intent(context, LoginActivity::class.java))
     }
 
-
-    fun logout(context: Context, idToken :String) {
+    fun logout(context: Context, idToken: String) {
         this.operationState = OperationState.LOGOUT
         this.idToken = idToken
         context.startActivity(Intent(context, LoginActivity::class.java))
