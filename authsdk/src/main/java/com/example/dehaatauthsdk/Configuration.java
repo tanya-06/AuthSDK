@@ -20,6 +20,7 @@ import org.json.JSONObject;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 
 
 /**
@@ -28,8 +29,6 @@ import java.nio.charset.Charset;
  * configuration. When a configuration change is detected, the app state is reset.
  */
 public final class Configuration {
-
-    private static final String TAG = "Configuration";
 
     private static final String PREFS_NAME = "config";
     private static final String KEY_LAST_HASH = "lastHash";
@@ -60,7 +59,7 @@ public final class Configuration {
         Configuration config = sInstance.get();
         if (config == null) {
             config = new Configuration(context);
-            sInstance = new WeakReference<Configuration>(config);
+            sInstance = new WeakReference<>(config);
         }
 
         return config;
@@ -180,7 +179,7 @@ public final class Configuration {
         Buffer configData = new Buffer();
         try {
             configSource.readAll(configData);
-            mConfigJson = new JSONObject(configData.readString(Charset.forName("UTF-8")));
+            mConfigJson = new JSONObject(configData.readString(StandardCharsets.UTF_8));
         } catch (IOException ex) {
             throw new InvalidConfigurationException(
                     "Failed to read configuration: " + ex.getMessage());
@@ -190,7 +189,7 @@ public final class Configuration {
         }
 
         mConfigHash = configData.sha256().base64();
-        mClientId = getConfigString("client_id");
+        mClientId = AuthSDK.INSTANCE.getClientId();
         mScope = getRequiredConfigString("authorization_scope");
         mRedirectUri = getRequiredConfigUri("redirect_uri");
         mEndSessionRedirectUri = getRequiredConfigUri("end_session_redirect_uri");
