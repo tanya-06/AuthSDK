@@ -2,7 +2,7 @@ subprojects{
     ext{
         projectCompileSdkVersion = 30
         projectBuildToolsVersion = '30.0.3'
-        projectMinSdkVersion = 21
+        projectMinSdkVersion = 19
         projectTargetSdkVersion = 30
 
         authSdkVersionCode = 1
