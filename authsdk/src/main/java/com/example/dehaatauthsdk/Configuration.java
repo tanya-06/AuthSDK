@@ -189,7 +189,7 @@ public final class Configuration {
         }
 
         mConfigHash = configData.sha256().base64();
-        mClientId = AuthSDK.INSTANCE.getClientId();
+        mClientId = ClientInfo.INSTANCE.getAuthSDK().getClientId();
         mScope = getRequiredConfigString("authorization_scope");
         mRedirectUri = getRequiredConfigUri("redirect_uri");
         mEndSessionRedirectUri = getRequiredConfigUri("end_session_redirect_uri");

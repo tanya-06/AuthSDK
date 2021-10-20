@@ -102,26 +102,30 @@ class LoginActivity : Activity() {
             ).setScope(initialConfiguration.scope).setLoginHint("Please enter email").build()
 
         chooseOperationAndProcess()
-
     }
 
-    private fun chooseOperationAndProcess() {
+    private fun chooseOperationAndProcess() =
+        when (ClientInfo.getAuthSDK().getOperationState()) {
 
-        when (AuthSDK.getOperationState()) {
+            DeHaatAuth.OperationState.EMAIL_LOGIN ->
+                startEmailLogin()
 
-            AuthSDK.OperationState.EMAIL_LOGIN ->
+            DeHaatAuth.OperationState.MOBILE_LOGIN ->
                 loadAuthorizationEndpointInWebView(mAuthRequest.toUri().toString())
 
-            AuthSDK.OperationState.RENEW_TOKEN ->
-                startRenewAuthToken(AuthSDK.getRefreshToken())
+            DeHaatAuth.OperationState.RENEW_TOKEN ->
+                startRenewAuthToken(ClientInfo.getAuthSDK().getRefreshToken())
 
-            AuthSDK.OperationState.LOGOUT ->
-                startLogout(AuthSDK.getIdToken())
-
-            else ->{
-
-            }
+            DeHaatAuth.OperationState.LOGOUT ->
+                startLogout(ClientInfo.getAuthSDK().getIdToken())
         }
+
+
+    private fun startEmailLogin() {
+        val authIntent =
+            mAuthService.createCustomTabsIntentBuilder(mAuthRequest.toUri()).build()
+        val intent = mAuthService.getAuthorizationRequestIntent(mAuthRequest, authIntent)
+        startActivityForResult(intent, EMAIL_LOGIN_REQUEST_CODE)
     }
 
     private fun loadAuthorizationEndpointInWebView(authUrl: String) {
@@ -142,8 +146,8 @@ class LoginActivity : Activity() {
                     } else {
                         if (checkIfUrlIsAuthorizationUrl(it)) {
                             inputUserCredentialsAndClickSignIn(
-                                AuthSDK.getUserName(),
-                                AuthSDK.getPassword()
+                                ClientInfo.getAuthSDK().getMobileNumber(),
+                                ClientInfo.getAuthSDK().getOtp()
                             )
                         }
                     }
@@ -191,9 +195,9 @@ class LoginActivity : Activity() {
         val response = EndSessionResponse.fromIntent(intent)
 
         response?.let {
-            AuthSDK.getLogoutCallback().onLogoutSuccess()
+            ClientInfo.getAuthSDK().getLogoutCallback().onLogoutSuccess()
         } ?: kotlin.run {
-            AuthSDK.getLogoutCallback().onLogoutFailure()
+            ClientInfo.getAuthSDK().getLogoutCallback().onLogoutFailure()
         }
 
         finish()
@@ -257,13 +261,13 @@ class LoginActivity : Activity() {
                             it.refreshToken!!,
                             it.idToken!!
                         )
-                        AuthSDK.getLoginCallback().onSuccess(tokenInfo)
+                        ClientInfo.getAuthSDK().getLoginCallback().onSuccess(tokenInfo)
                     } else
-                        AuthSDK.getLoginCallback()
+                        ClientInfo.getAuthSDK().getLoginCallback()
                             .onFailure(KotlinNullPointerException("access token is null"))
                 }
             } ?: kotlin.run {
-                AuthSDK.getLoginCallback().onFailure(exception)
+                ClientInfo.getAuthSDK().getLoginCallback().onFailure(exception)
             }
             finish()
         }
@@ -287,6 +291,24 @@ class LoginActivity : Activity() {
     override fun onDestroy() {
         super.onDestroy()
         mAuthService.dispose()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode == RESULT_OK && requestCode == EMAIL_LOGIN_REQUEST_CODE && data != null) {
+            val response = AuthorizationResponse.fromIntent(data)
+            response?.let {
+                performTokenRequest(
+                    response.createTokenExchangeRequest(),
+                    handleTokenResponseCallback
+                )
+            }
+        } else
+            finish()
+    }
+
+    companion object {
+        private const val EMAIL_LOGIN_REQUEST_CODE = 100
     }
 
 }
